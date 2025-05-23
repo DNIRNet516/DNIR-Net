@@ -67,7 +67,6 @@ def main(args) -> None:
             f"missing weights: {missing}"
         )
         
-    # 只训练LCA部分，从UNet初始化LCA
     init_with_new_zero, init_with_scratch = cldm.load_controlnet_lca_from_unet()
     if accelerator.is_main_process:
         print(
@@ -75,35 +74,6 @@ def main(args) -> None:
             f"New zero weights: {init_with_new_zero}\n"
             f"Scratch weights: {init_with_scratch}"
         )
-
-    # # 阶段特定的权重加载逻辑
-    # if args.train_stage == 1:
-    #     # 阶段1：从UNet初始化LCA
-    #     init_with_new_zero, init_with_scratch = cldm.load_controlnet_lca_from_unet()
-    #     if accelerator.is_main_process:
-    #         print(
-    #             f"Stage 1: LCA initialized from UNet\n"
-    #             f"New zero weights: {init_with_new_zero}\n"
-    #             f"Scratch weights: {init_with_scratch}"
-    #         )
-    # else:
-    #     # 阶段2：加载LCA权重，初始化RCA
-    #     if args.controlnet_lca_ckpt:
-    #         # cldm.load_controlnet_lca_from_ckpt(torch.load(args.controlnet_lca_ckpt))
-    #         ckpt = torch.load(args.controlnet_lca_ckpt)
-    #         cldm.load_controlnet_lca_from_ckpt(ckpt['controlnet_LCA'])
-    #         if accelerator.is_main_process:
-    #             print(f"Stage 2: LCA loaded from {args.controlnet_lca_ckpt}")
-    #     else:
-    #         raise ValueError("Stage 2 requires --controlnet_lca_ckpt argument")
-        
-    #     init_with_new_zero, init_with_scratch = cldm.load_controlnet_rca_from_unet()
-    #     if accelerator.is_main_process:
-    #         print(
-    #             f"Stage 2: RCA initialized from UNet\n"
-    #             f"New zero weights: {init_with_new_zero}\n"
-    #             f"Scratch weights: {init_with_scratch}"
-    #         )
 
     swinir: SwinIR = instantiate_from_config(cfg.model.swinir)
     sd = torch.load(cfg.train.swinir_path, map_location="cpu")
@@ -121,17 +91,7 @@ def main(args) -> None:
 
     diffusion: Diffusion = instantiate_from_config(cfg.model.diffusion)
 
-    # Setup optimizer:
-    # if args.train_stage == 1:
-    #     parameters_to_optimize = list(cldm.controlnet_LCA.parameters())
-    #     print("Training stage 1: Optimizing LCA only")
-    # else:
-    #     parameters_to_optimize = list(cldm.controlnet_LCA.parameters()) + list(cldm.controlnet_RCA.parameters())
-    #     print("Training stage 2: Optimizing LCA + RCA")
-
-    # 只训练LCA部分
     parameters_to_optimize = list(cldm.controlnet_LCA.parameters())
-    print("Training stage : Optimizing LCA only")
     opt = torch.optim.AdamW(parameters_to_optimize, lr=cfg.train.learning_rate)
 
     # Setup data:
@@ -184,16 +144,15 @@ def main(args) -> None:
 
             gt = rearrange(gt, "b h w c -> b c h w").contiguous().float()
             lq = rearrange(lq, "b h w c -> b c h w").contiguous().float()
-            # rgb = rearrange(rgb, "b h w c -> b c h w").contiguous().float()
             edge = rearrange(edge, "b h w c -> b c h w").contiguous().float()
 
             with torch.no_grad():
                 z_0 = pure_cldm.vae_encode(gt)
                 clean = swinir(lq)
-                cond = pure_cldm.prepare_condition(clean, prompt, edge)      # 【融合RGB图像方法二】
-                # cond shape: torch.Size([16, 4, 64, 64])
+                cond = pure_cldm.prepare_condition(clean, prompt, edge)      
+ 
                 # noise augmentation
-                cond_aug = copy.deepcopy(cond)      # 增强？
+                cond_aug = copy.deepcopy(cond)     
                 if noise_aug_timestep > 0:
                     cond_aug["c_img"] = diffusion.q_sample(
                         x_start=cond_aug["c_img"],
@@ -207,7 +166,7 @@ def main(args) -> None:
                 0, diffusion.num_timesteps, (z_0.shape[0],), device=device
             )
 
-            loss = diffusion.p_losses(cldm, z_0, t, cond_aug, is_first_stage=(args.train_stage == 1))       # 这里用cldm模型，计算损失，后续关键步骤的入口
+            loss = diffusion.p_losses(cldm, z_0, t, cond_aug, is_first_stage=(args.train_stage == 1))     
 
             opt.zero_grad()
             accelerator.backward(loss)
@@ -241,10 +200,6 @@ def main(args) -> None:
             if global_step % cfg.train.ckpt_every == 0 and global_step > 0:
                 if accelerator.is_main_process:
                     checkpoint = pure_cldm.controlnet_LCA.state_dict()
-                    # checkpoint = {
-                    #     'controlnet_LCA': pure_cldm.controlnet_LCA.state_dict(),
-                    #     'controlnet_RCA': pure_cldm.controlnet_RCA.state_dict()
-                    # }
                     ckpt_path = f"{ckpt_dir}/{global_step:07d}.pt"
                     torch.save(checkpoint, ckpt_path)
 
