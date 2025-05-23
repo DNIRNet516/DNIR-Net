@@ -2,5 +2,5 @@
 DNIR-Net: Dual-Stage Restoration Method for Neutron Imaging with Industrial Benchmark Dataset
 
 <p align="center">
-    <img src="assets/method_architecture.pdf">
+    <img src="assets/method_architecture.png">
 </p>
