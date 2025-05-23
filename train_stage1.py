@@ -14,8 +14,8 @@ from einops import rearrange
 from tqdm import tqdm
 import lpips
 
-from diffbir.model import SwinIR
-from diffbir.utils.common import instantiate_from_config, calculate_psnr_pt, to
+from DNIR_Net.model import SwinIR
+from DNIR_Net.utils.common import instantiate_from_config, calculate_psnr_pt, to
 
 
 def main(args) -> None:
