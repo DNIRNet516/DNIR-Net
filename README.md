@@ -48,7 +48,7 @@ python -u inference.py \
 --upscale 1 \
 --version custom \
 --train_cfg configs/train/train_stage2.yaml \
---ckpt experiment/ \
+--ckpt experiment \
 --captioner none \
 --cfg_scale 1.0 \
 --noise_aug 0 \
