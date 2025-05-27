@@ -52,8 +52,7 @@ def Normalize(in_channels):
 
 
 class CrossAttention(nn.Module):
-        # query_dim=320, context_dim=1024, heads=5, dim_head=64, dropout=0.0
-    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0): 
+    def __init__(self, query_dim, context_dim=None, heads=8, dim_head=64, dropout=0.0):
         super().__init__()
         print(
             f"Setting up {self.__class__.__name__} (vanilla). Query dim is {query_dim}, context_dim is {context_dim} and using "
@@ -65,7 +64,7 @@ class CrossAttention(nn.Module):
         self.scale = dim_head**-0.5
         self.heads = heads
 
-        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)             # 
+        self.to_q = nn.Linear(query_dim, inner_dim, bias=False)
         self.to_k = nn.Linear(context_dim, inner_dim, bias=False)
         self.to_v = nn.Linear(context_dim, inner_dim, bias=False)
 
@@ -226,12 +225,11 @@ class BasicTransformerBlock(nn.Module):
 
     def __init__(
         self,
-        dim,    # 320
-        n_heads,     # 5
-        d_head,      # 64
+        dim,
+        n_heads,
+        d_head,
         dropout=0.0,
-        context_dim=None,    # 1024/768
-        rgb_dim=None,  # 新增参数      【融合RGB图像方法二】
+        context_dim=None,
         gated_ff=True,
         checkpoint=True,
         disable_self_attn=False,
@@ -248,70 +246,33 @@ class BasicTransformerBlock(nn.Module):
         )  # is a self-attention if not self.disable_self_attn
         self.ff = FeedForward(dim, dropout=dropout, glu=gated_ff)
         self.attn2 = attn_cls(
-            query_dim=dim,    # 
-            context_dim=context_dim,    # 1024/768
-            heads=n_heads,       # 5
-            dim_head=d_head,      # 64
+            query_dim=dim,
+            context_dim=context_dim,
+            heads=n_heads,
+            dim_head=d_head,
             dropout=dropout,
         )  # is self-attn if context is none
-        self.attn_rgb1 = attn_cls(
-            query_dim=dim,
-            heads=n_heads,
-            dim_head=d_head,
-            dropout=dropout,
-            context_dim=rgb_dim if self.disable_self_attn else None,
-        )  # is a self-attention if not self.disable_self_attn
-        self.attn_rgb2 = attn_cls(  # 新增模块，用于处理rgb特征的交叉注意力,     【融合RGB图像方法二】
-            query_dim=dim,
-            context_dim=rgb_dim,
-            heads=n_heads,
-            dim_head=d_head,
-            dropout=dropout,
-        )
         self.norm1 = nn.LayerNorm(dim)
         self.norm2 = nn.LayerNorm(dim)
         self.norm3 = nn.LayerNorm(dim)
-        self.norm1_rgb = nn.LayerNorm(dim)
-        self.norm2_rgb = nn.LayerNorm(dim)  
         self.checkpoint = checkpoint
 
-    def forward(self, x, context=None, rgb=None):
+    def forward(self, x, context=None):
         return checkpoint(
-            self._forward, (x, context, rgb), self.parameters(), self.checkpoint
+            self._forward, (x, context), self.parameters(), self.checkpoint
         )
 
-    def _forward(self, x, context=None, rgb=None):
-        # x = (
-        #     self.attn1(
-        #         self.norm1(x), context=context if self.disable_self_attn else None
-        #     )
-        #     + x
-        # )
-        # x = self.attn2(self.norm2(x), context=context) + x
-        # x = self.ff(self.norm3(x)) + x
-
-        # 【注意力写法2】  注意参数不能共享
+    def _forward(self, x, context=None):
         x = (
             self.attn1(
                 self.norm1(x), context=context if self.disable_self_attn else None
             )
             + x
         )
-        if rgb is not None:
-            x = (
-                self.attn_rgb1(
-                    self.norm1_rgb(x), context=rgb if self.disable_self_attn else None
-                )
-                + x
-            )
-            
         x = self.attn2(self.norm2(x), context=context) + x
-        if rgb is not None:
-            x = self.attn_rgb2(self.norm2_rgb(x), context=rgb) + x
-
         x = self.ff(self.norm3(x)) + x
-
         return x
+
 
 class SpatialTransformer(nn.Module):
     """
@@ -326,12 +287,11 @@ class SpatialTransformer(nn.Module):
     def __init__(
         self,
         in_channels,
-        n_heads,    # 5
-        d_head,     # 64
+        n_heads,
+        d_head,
         depth=1,
         dropout=0.0,
-        context_dim=None,       # 1024
-        edge_dim=768,  
+        context_dim=None,
         disable_self_attn=False,
         use_linear=False,
         use_checkpoint=True,
@@ -339,8 +299,6 @@ class SpatialTransformer(nn.Module):
         super().__init__()
         if exists(context_dim) and not isinstance(context_dim, list):
             context_dim = [context_dim]
-        if exists(edge_dim) and not isinstance(edge_dim, list):       
-            edge_dim = [edge_dim]        
         self.in_channels = in_channels
         inner_dim = n_heads * d_head
         self.norm = Normalize(in_channels)
@@ -354,12 +312,11 @@ class SpatialTransformer(nn.Module):
         self.transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
-                    inner_dim,    
-                    n_heads,     
-                    d_head,      
+                    inner_dim,
+                    n_heads,
+                    d_head,
                     dropout=dropout,
-                    context_dim=context_dim[d],     # 1024
-                    rgb_dim=rgb_dim[d],  # 新增参数      【融合RGB图像方法二】
+                    context_dim=context_dim[d],
                     disable_self_attn=disable_self_attn,
                     checkpoint=use_checkpoint,
                 )
@@ -374,19 +331,10 @@ class SpatialTransformer(nn.Module):
             self.proj_out = zero_module(nn.Linear(in_channels, inner_dim))
         self.use_linear = use_linear
 
-    def forward(self, x, context=None, edge=None):  ## 16 1 512   16 4 512 512     # 在这里将clip提取的特征与x使用 ，用交叉注意力
-    # def forward(self, x, context=None):  
+    def forward(self, x, context=None):
         # note: if no context is given, cross-attention defaults to self-attention
-        # x shape:　torch.Size([16, 320, 64, 64])
-        # context shape: torch.Size([16, 77, 1024])                                                                          
-        # rgb shape: torch.Size([16, 4, 64, 64])                                                                                       
-        # rgb shape: torch.Size([16, 4, 4096])     
-        if edge is not None:
-            edge = rearrange(edge, "b c h w -> b c (h w)").contiguous()
         if not isinstance(context, list):
-            context = [context]     
-        if not isinstance(edge, list):
-            edge = [edge]
+            context = [context]
         b, c, h, w = x.shape
         x_in = x
         x = self.norm(x)
@@ -394,19 +342,12 @@ class SpatialTransformer(nn.Module):
             x = self.proj_in(x)
         x = rearrange(x, "b c h w -> b (h w) c").contiguous()
         if self.use_linear:
-            x = self.proj_in(x)       
-        # 这里可以加判断处理，如果rgb是四维的，按和上面一样的操作 处理成三维，然后过self.proj_in卷积处理下（不行，得具体看看这个卷积是干什么的）
-
+            x = self.proj_in(x)
         for i, block in enumerate(self.transformer_blocks):
-            # x = block(x, context=context[i])
-            x = block(x, context=context[i], rgb=edge[i])
-
+            x = block(x, context=context[i])
         if self.use_linear:
             x = self.proj_out(x)
         x = rearrange(x, "b (h w) c -> b c h w", h=h, w=w).contiguous()
-
         if not self.use_linear:
             x = self.proj_out(x)
-        x = x + x_in      
-    
-        return x 
+        return x + x_in

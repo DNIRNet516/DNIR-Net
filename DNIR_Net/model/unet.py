@@ -42,7 +42,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
             if isinstance(layer, TimestepBlock):
                 x = layer(x, emb)
             elif isinstance(layer, SpatialTransformer):
-                x = layer(x, context, edge)        
+                x = layer(x, context)        
             elif isinstance(layer, SpatialTransformer_edge):
                 x = layer(x, edge)                          
             else:
@@ -539,7 +539,7 @@ class UNetModel(nn.Module):
                                 num_head_channels=dim_head,
                                 use_new_attention_order=use_new_attention_order,
                             ) if not use_spatial_transformer else SpatialTransformer(
-                                ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim, rgb_dim=rgb_dim, # 【融合RGB图像方法二】
+                                ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim, 
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
                                 use_checkpoint=use_checkpoint
                             )
@@ -596,7 +596,7 @@ class UNetModel(nn.Module):
                 num_head_channels=dim_head,
                 use_new_attention_order=use_new_attention_order,
             ) if not use_spatial_transformer else SpatialTransformer(  # always uses a self-attn
-                            ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,  rgb_dim=rgb_dim, # 【融合RGB图像方法二】
+                            ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim,  
                             disable_self_attn=disable_middle_self_attn, use_linear=use_linear_in_transformer,
                             use_checkpoint=use_checkpoint
                         ),
@@ -650,7 +650,7 @@ class UNetModel(nn.Module):
                                 num_head_channels=dim_head,
                                 use_new_attention_order=use_new_attention_order,
                             ) if not use_spatial_transformer else SpatialTransformer(
-                                ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim, rgb_dim=rgb_dim, # 【融合RGB图像方法二】
+                                ch, num_heads, dim_head, depth=transformer_depth, context_dim=context_dim, 
                                 disable_self_attn=disabled_sa, use_linear=use_linear_in_transformer,
                                 use_checkpoint=use_checkpoint
                             )

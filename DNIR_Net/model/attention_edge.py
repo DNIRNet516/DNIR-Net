@@ -115,8 +115,6 @@ class BasicTransformerBlock_edge(nn.Module):
         n_heads,     
         d_head,      
         dropout=0.0,
-        context_dim=None,    
-        rgb_dim=None,  
         gated_ff=True,
         checkpoint=True,
         disable_self_attn=False,
@@ -159,7 +157,7 @@ class SpatialTransformer_edge(nn.Module):
         depth=1,
         dropout=0.0,
         context_dim=None,       
-        rgb_dim=768,  
+        edge_dim=768,  
         disable_self_attn=False,
         use_linear=False,
         use_checkpoint=True,
@@ -167,8 +165,8 @@ class SpatialTransformer_edge(nn.Module):
         super().__init__()
         if exists(context_dim) and not isinstance(context_dim, list):
             context_dim = [context_dim]
-        if exists(rgb_dim) and not isinstance(rgb_dim, list):       
-            rgb_dim = [rgb_dim]        
+        if exists(edge_dim) and not isinstance(edge_dim, list):       
+            edge_dim = [edge_dim]        
         self.in_channels = in_channels
         inner_dim = n_heads * d_head
         self.norm = Normalize(in_channels)
@@ -186,8 +184,6 @@ class SpatialTransformer_edge(nn.Module):
                     n_heads,     
                     d_head,      
                     dropout=dropout,
-                    context_dim=context_dim[d],     
-                    rgb_dim=rgb_dim[d],  
                     disable_self_attn=disable_self_attn,
                     checkpoint=use_checkpoint,
                 )

@@ -388,7 +388,7 @@ class EdgeControlNet(ControlNet):
             )
             self.attn_modules.append(attn_module)
     
-    def forward(self, x, hint, hq, edge, timesteps, context, unet_encoder_results, **kwargs):
+    def forward(self, x, hint, edge, timesteps, context, unet_encoder_results, **kwargs):
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)
 
@@ -400,7 +400,7 @@ class EdgeControlNet(ControlNet):
         for i, (module, zero_conv, cbr_layer, attn_module) in enumerate(zip(
             self.input_blocks, self.zero_convs, self.cbr_layers, self.attn_modules
         )):
-            h = module(h, emb, context, hq)        
+            h = module(h, emb, context)        
             
             # 1.edge resize
             edge_resized = F.interpolate(edge, size=(h.shape[2], h.shape[3]), mode="nearest")
@@ -424,7 +424,7 @@ class EdgeControlNet(ControlNet):
 
             outs.append(zero_conv(h, emb, context))
 
-        h = self.middle_block(h, emb, context, hq)      
+        h = self.middle_block(h, emb, context)      
         outs.append(self.middle_block_out(h, emb, context))
 
         return outs      
