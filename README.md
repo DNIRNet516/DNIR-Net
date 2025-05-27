@@ -61,7 +61,7 @@ python -u inference.py \
 --sampler spaced \
 --steps 50 \
 --pos_prompt '' \
---neg_prompt 'low quality, blurry, low-resolution, noisy, unsharp, weird textures' \
+--neg_prompt 'low quality, blurry, low-resolution, noisy, unsharp, weird textures' 
 ```
 
 # Train DNIR-Net

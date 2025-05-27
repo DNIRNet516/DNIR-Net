@@ -38,7 +38,6 @@ python -u inference.py \
 --pos_prompt '' \
 --neg_prompt 'low quality, blurry, low-resolution, noisy, unsharp, weird textures' \
 --train_stage 1
-
 '''
 
 def main(args) -> None:
