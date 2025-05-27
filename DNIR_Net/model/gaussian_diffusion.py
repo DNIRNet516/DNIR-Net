@@ -149,11 +149,10 @@ class Diffusion(nn.Module):
 
         return loss
 
-    def p_losses(self, model, x_start, t, cond, is_first_stage):
+    def p_losses(self, model, x_start, t, cond):
         noise = torch.randn_like(x_start)
         x_noisy = self.q_sample(x_start=x_start, t=t, noise=noise)
-        model_output = model(x_noisy, t, cond, is_first_stage)
-
+        model_output = model(x_noisy, t, cond)
 
         if self.parameterization == "x0":
             target = x_start

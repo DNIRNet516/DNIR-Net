@@ -17,7 +17,7 @@ from .util import (
     exists
 )
 from .attention import SpatialTransformer
-
+from .attention_edge import SpatialTransformer_edge
 
 class TimestepBlock(nn.Module):
     """
@@ -37,13 +37,14 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
     support it as an extra input.
     """
 
-    def forward(self, x, emb, context=None, edge=None):  # 【融合RGB图像方法二】
+    def forward(self, x, emb, context=None, edge=None):  
         for layer in self:
             if isinstance(layer, TimestepBlock):
                 x = layer(x, emb)
             elif isinstance(layer, SpatialTransformer):
-                x = layer(x, context, edge)                 # 【融合RGB图像方法二】
-                # x = layer(x, context)                 
+                x = layer(x, context, edge)        
+            elif isinstance(layer, SpatialTransformer_edge):
+                x = layer(x, edge)                          
             else:
                 x = layer(x)
         return x

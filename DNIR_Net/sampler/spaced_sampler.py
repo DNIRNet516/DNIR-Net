@@ -71,10 +71,8 @@ class SpacedSampler(Sampler):
         betas: np.ndarray,
         parameterization: Literal["eps", "v"],
         rescale_cfg: bool,
-        is_first_stage: bool,
     ) -> "SpacedSampler":
         super().__init__(betas, parameterization, rescale_cfg)
-        self.is_first_stage = is_first_stage
 
     def make_schedule(self, num_steps: int) -> None:
         used_timesteps = space_timesteps(self.num_timesteps, str(num_steps))
@@ -153,10 +151,10 @@ class SpacedSampler(Sampler):
         cfg_scale: float,
     ) -> torch.Tensor:
         if uncond is None or cfg_scale == 1.0:
-            model_output = model(x, model_t, cond, self.is_first_stage)
+            model_output = model(x, model_t, cond)
         else:
-            model_cond = model(x, model_t, cond, self.is_first_stage)
-            model_uncond = model(x, model_t, uncond, self.is_first_stage)
+            model_cond = model(x, model_t, cond)
+            model_uncond = model(x, model_t, uncond)
             model_output = model_uncond + cfg_scale * (model_cond - model_uncond)
         return model_output
 

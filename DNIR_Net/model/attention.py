@@ -331,7 +331,7 @@ class SpatialTransformer(nn.Module):
         depth=1,
         dropout=0.0,
         context_dim=None,       # 1024
-        rgb_dim=768,  # 新增参数      【融合RGB图像方法二】
+        edge_dim=768,  
         disable_self_attn=False,
         use_linear=False,
         use_checkpoint=True,
@@ -339,8 +339,8 @@ class SpatialTransformer(nn.Module):
         super().__init__()
         if exists(context_dim) and not isinstance(context_dim, list):
             context_dim = [context_dim]
-        if exists(rgb_dim) and not isinstance(rgb_dim, list):       # 【融合RGB图像方法二】
-            rgb_dim = [rgb_dim]        
+        if exists(edge_dim) and not isinstance(edge_dim, list):       
+            edge_dim = [edge_dim]        
         self.in_channels = in_channels
         inner_dim = n_heads * d_head
         self.norm = Normalize(in_channels)

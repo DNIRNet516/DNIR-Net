@@ -22,15 +22,11 @@ class CodeformerDataset(data.Dataset):
 
     def __init__(
         self,
-        # file_list: str,
         file_list_HQ: str,
-        file_list_LQ: str,        
-        # file_list_condition: str,               # clip预先提取的图像特征
-        # file_list_RGB: str,                     # 【融合RGB图像方法二】      
-        file_list_edge: str,                    # 【融合边缘图】
+        file_list_LQ: str,         
+        file_list_edge: str,                    
         file_backend_cfg: Mapping[str, Any],
         out_size: int,
-        # 以下这些参数原本用于生成LQ图像，现暂时保留
         crop_type: str,
         blur_kernel_size: int,
         kernel_list: Sequence[str],
@@ -41,23 +37,16 @@ class CodeformerDataset(data.Dataset):
         jpeg_range: Sequence[int],
     ) -> "CodeformerDataset":
         super(CodeformerDataset, self).__init__()
-        # self.file_list = file_list
-        # self.image_files = load_file_list(file_list)
         self.file_list_HQ = file_list_HQ
         self.file_list_LQ = file_list_LQ
-        # self.file_list_condition = file_list_condition
-        # self.file_list_RGB = file_list_RGB
         self.file_list_edge = file_list_edge
         self.image_files_HQ = load_file_list(file_list_HQ)
         self.image_files_LQ = load_file_list(file_list_LQ)
-        # self.image_files_condition = load_file_list(file_list_condition)    # clip预先提取的图像特征
-        # self.image_files_RGB = load_file_list(file_list_RGB)
         self.image_files_edge = load_file_list(file_list_edge)
         self.file_backend = instantiate_from_config(file_backend_cfg)
         self.out_size = out_size
         self.crop_type = crop_type
         assert self.crop_type in ["none", "center", "random"]
-        # 保留原有的HQ图像退化生成LQ图像的配置参数
         # degradation configurations
         self.blur_kernel_size = blur_kernel_size
         self.kernel_list = kernel_list
@@ -92,45 +81,18 @@ class CodeformerDataset(data.Dataset):
             image = np.array(image)
         # hwc, rgb, 0,255, uint8
         return image
-    
-    def load_condition_features(self, index: int) -> Optional[np.ndarray]:
-        """加载条件特征文件"""
-        condition_file = self.image_files_condition[index]
-        condition_path = condition_file["image_path"] 
-        # Tensor shape: torch.Size([1, 768])
-        try:
-            condition_features = torch.load(condition_path)  # 用这个实验
-            return condition_features
-        except Exception as e:
-            print(f"Failed to load condition features from {condition_path}: {e}")
-            return None
-        
-    def load_condition_features2(self, index: int) -> Optional[np.ndarray]:
-        """加载条件特征文件"""
-        condition_file = self.image_files_edge[index]
-        condition_path = condition_file["image_path"] 
-        # Tensor shape: torch.Size([1, 768])
-        try:
-            condition_features = torch.load(condition_path)  # 用这个实验
-            return condition_features
-        except Exception as e:
-            print(f"Failed to load condition features from {condition_path}: {e}")
-            return None
 
     def __getitem__(self, index: int) -> Dict[str, Union[np.ndarray, str]]:
-            # 加载HQ图像
             img_gt = None
             while img_gt is None:
-                # 从HQ文件列表中获取对应图像路径
                 image_file_HQ = self.image_files_HQ[index]
                 gt_path = image_file_HQ["image_path"]
                 prompt = image_file_HQ["prompt"]
                 img_gt = self.load_gt_image(gt_path)
                 if img_gt is None:
                     print(f"filed to load {gt_path}, try another image")
-                    index = random.randint(0, len(self) - 1)    #保留意见len(self.image_files_HQ)
+                    index = random.randint(0, len(self) - 1)   
 
-            # 加载LQ图像
             img_lq = None
             while img_lq is None:
                 image_file_LQ = self.image_files_LQ[index]
@@ -140,21 +102,6 @@ class CodeformerDataset(data.Dataset):
                     print(f"filed to load {lq_path}, try another image")
                     index = random.randint(0, len(self) - 1)
 
-            # 加载RGB图像特征          # 【融合RGB图像方法二】
-            # rgb = self.load_condition_features(index)
-
-            # 加载RGB图像，用作引导
-            # rgb = None
-            # while rgb is None:
-            #     image_file_RGB = self.image_files_RGB[index]
-            #     rgb_path = image_file_RGB["image_path"]
-            #     rgb = self.load_gt_image(rgb_path)
-            #     if rgb is None:
-            #         print(f"filed to load {rgb_path}, try another image")
-            #         index = random.randint(0, len(self) - 1)
-            # rgb = (rgb[..., ::-1] / 255.0).astype(np.float32)
-
-            # 加载边缘图，用作引导
             edge = None
             while edge is None:
                 image_file_edge = self.image_files_edge[index]
@@ -163,13 +110,8 @@ class CodeformerDataset(data.Dataset):
                 if edge is None:
                     print(f"filed to load {edge_path}, try another image")
                     index = random.randint(0, len(self) - 1)
+
             edge = (edge[..., ::-1] / 255.0).astype(np.float32)
-
-            # # 加载边缘图特征
-            # edge = self.load_condition_features2(index)
-
-            # 加载rgb图像特征，clip预先提取的图像特征
-            # condition = self.load_condition_features(index)
 
             img_gt = (img_gt[..., ::-1] / 255.0).astype(np.float32)
             gt = (img_gt[..., ::-1] * 2 - 1).astype(np.float32)
@@ -180,5 +122,4 @@ class CodeformerDataset(data.Dataset):
 
 
     def __len__(self) -> int:
-        # return len(self.image_files)
         return len(self.image_files_HQ)

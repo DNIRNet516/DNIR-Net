@@ -11,44 +11,29 @@ from .unet import (
     AttentionBlock,
     UNetModel,
 )
+from torch.nn import functional as F
+from .attention_edge import SpatialTransformer_edge
 
 class ControlledUnetModel(UNetModel):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.control_scales = [1.0] * 13
 
-    def forward(                # x_noisy, t, c_txt, c_img, c_rgb
+    def forward(
         self,
         x,
         timesteps=None,
         context=None,
-        # control=None,
-        hint=None,
-        rgb=None,               # vae处理过的rgb图像
+        control=None,
         only_mid_control=False,
-        is_first_stage=True,    # 是否是一阶段训练（只训练LCA模块）
         **kwargs,
     ):
-        hs = []         # UNet编码器部分的中间结果
-
+        hs = []
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)
         h, emb, context = map(lambda t: t.type(self.dtype), (x, emb, context))
         for module in self.input_blocks:
             h = module(h, emb, context)
             hs.append(h)
+        h = self.middle_block(h, emb, context)
 
-        if is_first_stage:
-            # 用LCA计算控制信息,第一阶段
-            control = self.controlnet_LCA(x=x, hint=hint, timesteps=timesteps, context=context, unet_encoder_results=hs)    
-        else:
-            # 用 LCA 和 RCA 计算控制信息，第二阶段
-            z_ref = self.controlnet_RCA.RLF(gt_image=hint, z_lq=rgb, emb=emb) # rgb
-            control = self.control_DCA(x=x, hint=hint, z_ref=z_ref, rgb=rgb, timesteps=timesteps, context=context, unet_encoder_results=hs)
-
-        control = [c * scale for c, scale in zip(control, self.control_scales)]
-
-        h = self.middle_block(h, emb, context)  
         if control is not None:
             h += control.pop()
 
@@ -61,47 +46,6 @@ class ControlledUnetModel(UNetModel):
 
         h = h.type(x.dtype)
         return self.out(h)
-    
-    def control_DCA(self, x, hint, z_ref, rgb, timesteps, context, unet_encoder_results):
-            t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
-            emb = self.time_embed(t_emb)
-
-            x = x + hint
-
-            outs = []
-            lca_features = []
-            rca_features = []
-
-            h, emb, context = map(lambda t: t.type(self.dtype), (x, emb, context))      
-            for i, (module_LCA, zero_conv_LCA, module_RCA, zero_conv_RCA) in enumerate(
-                    zip(self.controlnet_LCA.input_blocks, self.controlnet_LCA.zero_convs,
-                        self.controlnet_RCA.input_blocks, self.controlnet_RCA.zero_convs)):
-                # 在 LCA 中计算
-                h_lca = module_LCA(h, emb, context)
-                lca_features.append(zero_conv_LCA(h_lca))
-
-                # 在 RCA 中计算，并合并到 h
-                if i == 0:
-                    h_rca = module_RCA(lca_features[i] + z_ref, emb, context, rgb)      
-                else :
-                    h_rca = module_RCA(lca_features[i] + rca_features[i-1], emb, context, rgb)
-                rca_features.append(zero_conv_RCA(h_rca))
-
-                h = lca_features[i] + rca_features[i]
-                h = h + unet_encoder_results[i]  # 融合编码器部分的中间结果
-
-                outs.append(h)
-
-            # 处理中间块
-            h_rca_middle = self.controlnet_RCA.middle_block(rca_features[-1], emb, context, rgb)
-            h_lca_middle = self.controlnet_LCA.middle_block(h[-1] + h_rca_middle, emb, context)
-            
-            h_middle = h_lca_middle 
-            outs.append(h_middle)
-
-            return outs
-
-
 class ControlNet(nn.Module):
 
     def __init__(
@@ -127,7 +71,7 @@ class ControlNet(nn.Module):
         use_spatial_transformer=False,  # custom transformer support
         transformer_depth=1,  # custom transformer support
         context_dim=None,  # custom transformer support
-        rgb_dim=None,  # 新增参数      【融合RGB图像方法二】
+        rgb_dim=None,  
         n_embed=None,  # custom support for prediction of discrete ids into codebook of first stage vq model
         legacy=True,
         disable_self_attentions=None,
@@ -341,13 +285,13 @@ class ControlNet(nn.Module):
                     use_new_attention_order=use_new_attention_order,
                 )
                 if not use_spatial_transformer          # use_spatial_transformer: True
-                else SpatialTransformer(  # always uses a self-attn     # 只有这里用到了context！ 看后续怎么融合
+                else SpatialTransformer(  # always uses a self-attn     
                     ch,
                     num_heads,
                     dim_head,
                     depth=transformer_depth,
                     context_dim=context_dim,
-                    rgb_dim=rgb_dim,  # 新增参数      【融合RGB图像方法二】
+                    rgb_dim=rgb_dim,  
                     disable_self_attn=disable_middle_self_attn,
                     use_linear=use_linear_in_transformer,
                     use_checkpoint=use_checkpoint,
@@ -365,6 +309,12 @@ class ControlNet(nn.Module):
         self.middle_block_out = self.make_zero_conv(ch)
         self._feature_size += ch
 
+        self.input_block_chans = input_block_chans  
+        self.transformer_depth = transformer_depth
+        self.context_dim = context_dim
+        self.rgb_dim = rgb_dim
+        self.use_linear_in_transformer = use_linear_in_transformer
+
     def make_zero_conv(self, channels):
         return TimestepEmbedSequential(
             zero_module(conv_nd(self.dims, channels, channels, 1, padding=0))
@@ -374,7 +324,7 @@ class ControlNet(nn.Module):
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)
 
-        x = torch.cat((x, hint), dim=1)    # 【融合RGB图像方法二】 通道数 8     记得改配置文件！！  
+        x = torch.cat((x, hint), dim=1)    
 
         outs = []
         
@@ -388,35 +338,100 @@ class ControlNet(nn.Module):
 
         return outs
 
-# DCA中的LCA
-class ControlNet_LCA(ControlNet):
+class EdgeControlNet(ControlNet):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # self.RLF = RLFModule(in_channels=4) 
-        self.resblock = ResBlock2(in_channels=4)
+        self.adapter = Adapter(in_channels=4)
+
+        # CBR list
+        self.cbr_layers = nn.ModuleList([
+            nn.Sequential(
+                nn.Conv2d(ch + 16, ch, kernel_size=3, padding=1),
+                nn.BatchNorm2d(ch),
+                nn.ReLU(inplace=True)
+            ) for ch in self.input_block_chans
+        ])
+
+        # Special attention
+        self.attn_modules = nn.ModuleList()
+        for ch in self.input_block_chans:
+            attn_module = TimestepEmbedSequential(
+                ResBlock(
+                    ch,
+                    self.model_channels * 4,  
+                    dropout=self.dropout,
+                    dims=self.dims,
+                    use_checkpoint=self.use_checkpoint,
+                    use_scale_shift_norm=self.use_scale_shift_norm,
+                    out_channels=ch,  
+                ),
+                SpatialTransformer_edge(
+                    ch,
+                    ch // 64,
+                    64,
+                    depth=self.transformer_depth,
+                    context_dim=self.context_dim,
+                    rgb_dim=self.rgb_dim,
+                    disable_self_attn=False,
+                    use_linear=self.use_linear_in_transformer,
+                    use_checkpoint=self.use_checkpoint,
+                ),
+                ResBlock(
+                    ch,
+                    self.model_channels * 4,
+                    dropout=self.dropout,
+                    dims=self.dims,
+                    use_checkpoint=self.use_checkpoint,
+                    use_scale_shift_norm=self.use_scale_shift_norm,
+                    out_channels=ch,  
+                )
+            )
+            self.attn_modules.append(attn_module)
     
-    def forward(self, x, hint, edge, timesteps, context, unet_encoder_results, **kwargs):
+    def forward(self, x, hint, hq, edge, timesteps, context, unet_encoder_results, **kwargs):
         t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
         emb = self.time_embed(t_emb)
 
-        x = torch.cat((x, hint), dim=1)    # 【融合RGB图像方法二】 通道数 8     记得改配置文件！！  保持cat就行
+        x = torch.cat((x, hint), dim=1)    
 
         outs = []
         
         h, emb, context = map(lambda t: t.type(self.dtype), (x, emb, context))
-        for i,(module, zero_conv) in enumerate(zip(self.input_blocks, self.zero_convs)):
-            h = module(h, emb, context, edge)            
-            h = h + unet_encoder_results[i]               # 在每层的调用中需要加入UNet编码器中间结果 
+        for i, (module, zero_conv, cbr_layer, attn_module) in enumerate(zip(
+            self.input_blocks, self.zero_convs, self.cbr_layers, self.attn_modules
+        )):
+            h = module(h, emb, context, hq)        
+            
+            # 1.edge resize
+            edge_resized = F.interpolate(edge, size=(h.shape[2], h.shape[3]), mode="nearest")
+
+            # 2.channel split and edge fusion
+            chunks = torch.chunk(h, 16, dim=1)  # split into 16 channels
+            fused_chunks = [
+                torch.cat((chunk, edge_resized), dim=1)  
+                for chunk in chunks
+            ]
+            h_fused = torch.cat(fused_chunks, dim=1)   
+          
+            # 3.CBR
+            h = cbr_layer(h_fused)  
+
+            # 4.special attention
+            h = attn_module(h, emb, edge=edge)
+            
+            # 5.add unet_encoder_results
+            h = h + unet_encoder_results[i]      
+
             outs.append(zero_conv(h, emb, context))
 
-        h = self.middle_block(h, emb, context, edge)      
+        h = self.middle_block(h, emb, context, hq)      
         outs.append(self.middle_block_out(h, emb, context))
 
-        return outs    
+        return outs      
 
-class ResBlock2(nn.Module):
+class Adapter(nn.Module):
     def __init__(self, in_channels):
-        super(ResBlock2, self).__init__()
+        super(Adapter, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, in_channels * 2, kernel_size=3, padding=1)
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = nn.Conv2d(in_channels * 2, in_channels, kernel_size=3, padding=1)
@@ -430,135 +445,3 @@ class ResBlock2(nn.Module):
         out = self.relu(out)
         return out
     
-class RLFModule(nn.Module):
-    def __init__(self, in_channels):
-        super(RLFModule, self).__init__()
-        self.resblock = ResBlock2(in_channels)
-        self.z_lq_conv = nn.Conv2d(in_channels, in_channels, kernel_size=3, padding=1)
-
-    def forward(self, gt, z_lq):
-        # gt经过残差块
-        gt_output = self.resblock(gt)
-        # z_lq经过卷积
-        z_lq_output = self.z_lq_conv(z_lq)
-        # 做加法
-        output = gt_output + z_lq_output
-        return output
-    
-class ControlNet_RCA(ControlNet):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        #需要添加一个模块用于 处理gt,并与lq想加，即论文中的RLF模块  计算得到z_ref
-        self.RLF = RLFModule(in_channels=4) 
-        self.input_blocks
-        
-
-
-'''
-    controlnet(LCA) 网络结构：
-    self.time_embed = nn.Sequential(
-        linear(model_channels, time_embed_dim),     model_channels=320, time_embed_dim=320 * 4 = 1280
-        nn.SiLU(),
-        linear(time_embed_dim, time_embed_dim),
-    )
-
-    self.input_blocks :
-        初始卷积层：
-        TimestepEmbedSequential(
-            conv_nd(
-                    dims, in_channels + hint_channels, model_channels, 3, padding=1     # [2,8,320,3]
-            )
-        )
-        后续层，按 channel_mult=[1,2,4,4] 循环:
-
-        ===第一层===
-        ResBlock                    (ch=320,out_channels=320)
-        SpatialTransformer          (ch=320)
-        ResBlock                    (ch=320,out_channels=320)   
-        SpatialTransformer          (ch=320)
-        Downsample                  (ch=320,out_ch=320)
-
-        ===第二层===
-        ResBlock                    (ch=320,out_channels=640)
-        SpatialTransformer          (ch=640)
-        ResBlock                    (ch=640,out_channels=640)   
-        SpatialTransformer          (ch=640)
-        Downsample                  (ch=640,out_ch=640)
-
-        ===第三层===
-        ResBlock                    (ch=640,out_channels=1280)
-        SpatialTransformer          (ch=1280)
-        ResBlock                    (ch=1280,out_channels=1280)   
-        SpatialTransformer          (ch=1280)
-        Downsample                  (ch=1280,out_ch=1280)     
-
-        ===第四层===
-        ResBlock                    (ch=1280,out_channels=1280)
-        ResBlock                    (ch=1280,out_channels=1280)      
-
-    self.zero_convs       
-        与 self.input_blocks 输入通道对应， [320,640,1280,1280]
-
-    self.middle_block :
-        ResBlock                    (ch=1280,out_channels=1280)
-        SpatialTransformer          (ch=1280)
-        ResBlock                    (ch=1280,out_channels=1280)   
-    
-    self.middle_block_out :
-        zero_conv                   [1280]
-
-'''
-
-'''
-    controlnet(RCA) 网络结构：
-    self.time_embed = nn.Sequential(
-        linear(model_channels, time_embed_dim),     model_channels=320, time_embed_dim=320 * 4 = 1280
-        nn.SiLU(),
-        linear(time_embed_dim, time_embed_dim),
-    )
-
-    self.input_blocks :
-        初始卷积层：
-        TimestepEmbedSequential(
-            conv_nd(
-                    dims, in_channels + hint_channels, model_channels, 3, padding=1     # [2,320,320,3]
-            )
-        )
-        后续层，按 channel_mult=[1,2,4,4] 循环:
-
-        ===第一层===
-        ResBlock                    (ch=320,out_channels=320)
-        SpatialTransformer          (ch=320)
-        ResBlock                    (ch=320,out_channels=320)   
-        SpatialTransformer          (ch=320)
-        Downsample                  (ch=320,out_ch=320)
-
-        ===第二层===
-        ResBlock                    (ch=320,out_channels=640)
-        SpatialTransformer          (ch=640)
-        ResBlock                    (ch=640,out_channels=640)   
-        SpatialTransformer          (ch=640)
-        Downsample                  (ch=640,out_ch=640)
-
-        ===第三层===
-        ResBlock                    (ch=640,out_channels=1280)
-        SpatialTransformer          (ch=1280)
-        ResBlock                    (ch=1280,out_channels=1280)   
-        SpatialTransformer          (ch=1280)
-        Downsample                  (ch=1280,out_ch=1280)     
-
-        ===第四层===
-        ResBlock                    (ch=1280,out_channels=1280)
-        ResBlock                    (ch=1280,out_channels=1280)      
-
-    self.zero_convs       
-        与 self.input_blocks 输入通道对应， [320,640,1280,1280]
-
-    self.middle_block :
-        ResBlock                    (ch=1280,out_channels=1280)
-        SpatialTransformer          (ch=1280)
-        ResBlock                    (ch=1280,out_channels=1280)   
-    
-    self.middle_block_out :
-        zero_conv                   [1280]    
-'''

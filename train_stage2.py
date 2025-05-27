@@ -15,30 +15,6 @@ from torch.utils.tensorboard import SummaryWriter
 from DNIR_Net.model import ControlLDM, SwinIR, Diffusion
 from DNIR_Net.utils.common import instantiate_from_config, to, log_txt_as_img
 from DNIR_Net.sampler import SpacedSampler
-# python train_stage2.py --config configs/train/train_stage2.yaml --train_stage 1
-'''
-python train_stage2.py --config configs/train/train_stage2.yaml \
---train_stage 2 \
---controlnet_lca_ckpt experiment/experiment_MGFA_7/stage2/checkpoints/0030000.pt
-
-python -u inference.py \
---upscale 1 \
---version custom \
---train_cfg configs/train/train_stage2.yaml \
---ckpt experiment/experiment_37/stage2/checkpoints/0030000.pt \
---captioner none \
---cfg_scale 1.0 \
---noise_aug 0 \
---input datasets/ZZCX_3_3/test/LQ \
---edge_path datasets/ZZCX_3_3/test/edge \
---output results/5.4/test_2 \
---precision fp32 \
---sampler spaced \
---steps 50 \
---pos_prompt '' \
---neg_prompt 'low quality, blurry, low-resolution, noisy, unsharp, weird textures' \
---train_stage 1
-'''
 
 def main(args) -> None:
     # Setup accelerator:
@@ -66,13 +42,20 @@ def main(args) -> None:
             f"missing weights: {missing}"
         )
         
-    init_with_new_zero, init_with_scratch = cldm.load_controlnet_lca_from_unet()
-    if accelerator.is_main_process:
-        print(
-            f"train Stage : LCA initialized from UNet\n"
-            f"New zero weights: {init_with_new_zero}\n"
-            f"Scratch weights: {init_with_scratch}"
-        )
+    if cfg.train.resume:
+        cldm.load_controlnet_from_ckpt(torch.load(cfg.train.resume, map_location="cpu"))
+        if accelerator.is_main_process:
+            print(
+                f"strictly load controlnet weight from checkpoint: {cfg.train.resume}"
+            )
+    else:
+        init_with_new_zero, init_with_scratch = cldm.load_controlnet_from_unet()
+        if accelerator.is_main_process:
+            print(
+                f"strictly load controlnet weight from pretrained SD\n"
+                f"weights initialized with newly added zeros: {init_with_new_zero}\n"
+                f"weights initialized from scratch: {init_with_scratch}"
+            )
 
     swinir: SwinIR = instantiate_from_config(cfg.model.swinir)
     sd = torch.load(cfg.train.swinir_path, map_location="cpu")
@@ -123,7 +106,7 @@ def main(args) -> None:
     epoch = 0
     epoch_loss = []
     sampler = SpacedSampler(
-        diffusion.betas, diffusion.parameterization, rescale_cfg=False, is_first_stage=(args.train_stage == 1)
+        diffusion.betas, diffusion.parameterization, rescale_cfg=False
     )
     if accelerator.is_main_process:
         writer = SummaryWriter(exp_dir)
@@ -165,7 +148,7 @@ def main(args) -> None:
                 0, diffusion.num_timesteps, (z_0.shape[0],), device=device
             )
 
-            loss = diffusion.p_losses(cldm, z_0, t, cond_aug, is_first_stage=(args.train_stage == 1))     
+            loss = diffusion.p_losses(cldm, z_0, t, cond_aug)     
 
             opt.zero_grad()
             accelerator.backward(loss)
