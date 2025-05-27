@@ -16,8 +16,7 @@ model:
         use_spatial_transformer: True
         use_linear_in_transformer: True
         transformer_depth: 1
-        context_dim: 1024  
-        edge_dim: 4096    
+        context_dim: 1024   
         legacy: False
       vae_cfg:
         embed_dim: 4
@@ -64,8 +63,7 @@ model:
         use_spatial_transformer: True
         use_linear_in_transformer: True
         transformer_depth: 1
-        context_dim: 1024  
-        edge_dim: 4096    
+        context_dim: 1024    
         legacy: False
 
   swinir:

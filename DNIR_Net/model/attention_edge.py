@@ -156,17 +156,11 @@ class SpatialTransformer_edge(nn.Module):
         d_head,     
         depth=1,
         dropout=0.0,
-        context_dim=None,       
-        edge_dim=768,  
         disable_self_attn=False,
         use_linear=False,
         use_checkpoint=True,
     ):
-        super().__init__()
-        if exists(context_dim) and not isinstance(context_dim, list):
-            context_dim = [context_dim]
-        if exists(edge_dim) and not isinstance(edge_dim, list):       
-            edge_dim = [edge_dim]        
+        super().__init__()      
         self.in_channels = in_channels
         inner_dim = n_heads * d_head
         self.norm = Normalize(in_channels)

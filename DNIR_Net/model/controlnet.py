@@ -71,7 +71,6 @@ class ControlNet(nn.Module):
         use_spatial_transformer=False,  # custom transformer support
         transformer_depth=1,  # custom transformer support
         context_dim=None,  # custom transformer support
-        rgb_dim=None,  
         n_embed=None,  # custom support for prediction of discrete ids into codebook of first stage vq model
         legacy=True,
         disable_self_attentions=None,
@@ -111,8 +110,8 @@ class ControlNet(nn.Module):
         self.image_size = image_size
         self.in_channels = in_channels
         self.model_channels = model_channels
-        if isinstance(num_res_blocks, int):         # num_res_blocks=2
-            self.num_res_blocks = len(channel_mult) * [num_res_blocks]  # num_res_blocks=[2,2,2,2]
+        if isinstance(num_res_blocks, int):         
+            self.num_res_blocks = len(channel_mult) * [num_res_blocks]  
         else:
             if len(num_res_blocks) != len(channel_mult):
                 raise ValueError(
@@ -161,7 +160,7 @@ class ControlNet(nn.Module):
             [
                 TimestepEmbedSequential(
                     conv_nd(
-                        dims, in_channels + hint_channels, model_channels, 3, padding=1     # cat就行   [2,8,320,3]
+                        dims, in_channels + hint_channels, model_channels, 3, padding=1     
                     )
                 )
             ]
@@ -172,8 +171,8 @@ class ControlNet(nn.Module):
         input_block_chans = [model_channels]
         ch = model_channels
         ds = 1
-        for level, mult in enumerate(channel_mult):             # channel_mult=[1,2,4,4]
-            for nr in range(self.num_res_blocks[level]):        # num_res_blocks=[2,2,2,2]
+        for level, mult in enumerate(channel_mult):             
+            for nr in range(self.num_res_blocks[level]):        
                 layers = [
                     ResBlock(
                         ch,
@@ -186,20 +185,19 @@ class ControlNet(nn.Module):
                     )
                 ]
                 ch = mult * model_channels
-                if ds in attention_resolutions:                 # attention_resolutions=[ 4, 2, 1 ]
+                if ds in attention_resolutions:               
                     if num_head_channels == -1:
                         dim_head = ch // num_heads
                     else:
                         num_heads = ch // num_head_channels
                         dim_head = num_head_channels
-                    if legacy:                                  # legacy=false
-                        # num_heads = 1
+                    if legacy:                                  
                         dim_head = (
                             ch // num_heads
                             if use_spatial_transformer
                             else num_head_channels
                         )
-                    if exists(disable_self_attentions):         # disable_self_attentions=none
+                    if exists(disable_self_attentions):         
                         disabled_sa = disable_self_attentions[level]
                     else:
                         disabled_sa = False
@@ -216,14 +214,13 @@ class ControlNet(nn.Module):
                                 num_head_channels=dim_head,
                                 use_new_attention_order=use_new_attention_order,
                             )
-                            if not use_spatial_transformer          # use_spatial_transformer: True
+                            if not use_spatial_transformer          
                             else SpatialTransformer(
                                 ch,
                                 num_heads,
                                 dim_head,
                                 depth=transformer_depth,
                                 context_dim=context_dim,
-                                rgb_dim=rgb_dim,  # 新增参数      【融合RGB图像方法二】
                                 disable_self_attn=disabled_sa,
                                 use_linear=use_linear_in_transformer,
                                 use_checkpoint=use_checkpoint,
@@ -291,7 +288,6 @@ class ControlNet(nn.Module):
                     dim_head,
                     depth=transformer_depth,
                     context_dim=context_dim,
-                    rgb_dim=rgb_dim,  
                     disable_self_attn=disable_middle_self_attn,
                     use_linear=use_linear_in_transformer,
                     use_checkpoint=use_checkpoint,
@@ -311,8 +307,6 @@ class ControlNet(nn.Module):
 
         self.input_block_chans = input_block_chans  
         self.transformer_depth = transformer_depth
-        self.context_dim = context_dim
-        self.rgb_dim = rgb_dim
         self.use_linear_in_transformer = use_linear_in_transformer
 
     def make_zero_conv(self, channels):
@@ -370,8 +364,6 @@ class EdgeControlNet(ControlNet):
                     ch // 64,
                     64,
                     depth=self.transformer_depth,
-                    context_dim=self.context_dim,
-                    rgb_dim=self.rgb_dim,
                     disable_self_attn=False,
                     use_linear=self.use_linear_in_transformer,
                     use_checkpoint=self.use_checkpoint,
