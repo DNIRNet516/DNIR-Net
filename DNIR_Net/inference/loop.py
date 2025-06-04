@@ -148,18 +148,7 @@ class InferenceLoop:
             print(f"load lq: {file_path}")
             self.loop_ctx["file_stem"] = stem
 
-            # # 【读取对应的特征】
-            # condition_file = os.path.join(self.args.condition_path, f"{stem}.pt")
-            # if os.path.exists(condition_file):
-            #     condition = torch.load(condition_file)
-            # else:
-            #     print(f"Condition file {condition_file} not found. Using empty tensor as condition.")
-            #     condition = torch.empty(0)
-            # if torch.cuda.is_available():
-            #     condition = condition.cuda()
-            # condition = condition.unsqueeze(0)
-
-            # 【读取对应的rgb图像】
+            # edge image
             edge_file_path = os.path.join(self.args.edge_path, file_name)
             if os.path.exists(edge_file_path):
                 edge_image = Image.open(edge_file_path).convert("RGB")
@@ -183,7 +172,6 @@ class InferenceLoop:
         }[self.args.precision]
 
         for (lq, edge) in self.load_lq():
-        # for lq in self.load_lq():
             # prepare prompt
             with VRAMPeakMonitor("applying captioner"):
                 caption = self.captioner(lq)
@@ -230,9 +218,7 @@ class InferenceLoop:
                         self.args.s_noise,
                         self.args.eta,
                         self.args.order,
-                        # condition,      # 【读取对应的特征】
                         np.tile(edge[None], (n_inputs, 1, 1, 1)),
-                        self.args.train_stage,
                     )
                 samples.extend(list(batch_samples))
             self.save(samples, pos_prompt, neg_prompt)

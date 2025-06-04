@@ -43,91 +43,10 @@ def checkpoint(func, inputs, params, flag):
     else:
         return func(*inputs)
 
-
-# class CheckpointFunction(torch.autograd.Function):
-#     @staticmethod
-#     def forward(ctx, run_function, length, *args):
-#         ctx.run_function = run_function
-#         ctx.input_tensors = list(args[:length])
-#         ctx.input_params = list(args[length:])
-#         ctx.gpu_autocast_kwargs = {"enabled": torch.is_autocast_enabled(),
-#                                    "dtype": torch.get_autocast_gpu_dtype(),
-#                                    "cache_enabled": torch.is_autocast_cache_enabled()}
-#         with torch.no_grad():
-#             output_tensors = ctx.run_function(*ctx.input_tensors)
-#         return output_tensors
-
-#     @staticmethod
-#     def backward(ctx, *output_grads):
-#         ctx.input_tensors = [x.detach().requires_grad_(True) for x in ctx.input_tensors]
-#         with torch.enable_grad(), \
-#                 torch.cuda.amp.autocast(**ctx.gpu_autocast_kwargs):
-#             # Fixes a bug where the first op in run_function modifies the
-#             # Tensor storage in place, which is not allowed for detach()'d
-#             # Tensors.
-#             shallow_copies = [x.view_as(x) for x in ctx.input_tensors]
-#             output_tensors = ctx.run_function(*shallow_copies)
-#         input_grads = torch.autograd.grad(
-#             output_tensors,
-#             ctx.input_tensors + ctx.input_params,
-#             output_grads,
-#             allow_unused=True,
-#         )
-#         del ctx.input_tensors
-#         del ctx.input_params
-#         del output_tensors
-#         return (None, None) + input_grads
-
-
-# Fixes: When we set unet parameters with requires_grad=False, the original CheckpointFunction
-# still tries to compute gradient for unet parameters.
-# https://discuss.pytorch.org/t/get-runtimeerror-one-of-the-differentiated-tensors-does-not-require-grad-in-pytorch-lightning/179738/6
-# class CheckpointFunction(torch.autograd.Function):
-#     @staticmethod
-#     def forward(ctx, run_function, length, *args):
-#         ctx.run_function = run_function
-#         ctx.input_tensors = list(args[:length])
-#         ctx.input_params = list(args[length:])
-#         ctx.gpu_autocast_kwargs = {"enabled": torch.is_autocast_enabled(),
-#                                    "dtype": torch.get_autocast_gpu_dtype(),
-#                                    "cache_enabled": torch.is_autocast_cache_enabled()}
-#         with torch.no_grad():
-#             output_tensors = ctx.run_function(*ctx.input_tensors)
-#         return output_tensors
-
-#     @staticmethod
-#     def backward(ctx, *output_grads):
-#         ctx.input_tensors = [x.detach().requires_grad_(True) for x in ctx.input_tensors]
-#         with torch.enable_grad(), \
-#                 torch.cuda.amp.autocast(**ctx.gpu_autocast_kwargs):
-#             # Fixes a bug where the first op in run_function modifies the
-#             # Tensor storage in place, which is not allowed for detach()'d
-#             # Tensors.
-#             shallow_copies = [x.view_as(x) for x in ctx.input_tensors]
-#             output_tensors = ctx.run_function(*shallow_copies)
-#         grads = torch.autograd.grad(
-#             output_tensors,
-#             ctx.input_tensors + [x for x in ctx.input_params if x.requires_grad],
-#             output_grads,
-#             allow_unused=True,
-#         )
-#         grads = list(grads)
-#         # Assign gradients to the correct positions, matching None for those that do not require gradients
-#         input_grads = []
-#         for tensor in ctx.input_tensors + ctx.input_params:
-#             if tensor.requires_grad:
-#                 input_grads.append(grads.pop(0))  # Get the next computed gradient
-#             else:
-#                 input_grads.append(None)  # No gradient required for this tensor
-#         del ctx.input_tensors
-#         del ctx.input_params
-#         del output_tensors
-#         return (None, None) + tuple(input_grads)
-class CheckpointFunction(torch.autograd.Function):          # 【融合RGB图像方法二】
+class CheckpointFunction(torch.autograd.Function):          
     @staticmethod
     def forward(ctx, run_function, length, *args):
         ctx.run_function = run_function
-        # 记录 None 值的位置
         ctx.none_indices = [i for i, x in enumerate(args[:length]) if x is None]
         ctx.input_tensors = list(args[:length])
         ctx.input_params = list(args[length:])
@@ -140,21 +59,20 @@ class CheckpointFunction(torch.autograd.Function):          # 【融合RGB图像
 
     @staticmethod
     def backward(ctx, *output_grads):
-        # 处理输入张量，将 None 保留
+       
         ctx.input_tensors = [
             x.detach().requires_grad_(True) if x is not None else None
             for x in ctx.input_tensors
         ]
 
-        # 过滤掉 None 值，以便进行梯度计算
         valid_input_tensors = [x for x in ctx.input_tensors if x is not None]
         valid_input_params = [x for x in ctx.input_params if x is not None and x.requires_grad]
 
         with torch.enable_grad(), \
                 torch.cuda.amp.autocast(**ctx.gpu_autocast_kwargs):
-            # 复制有效输入张量
+   
             shallow_copies = [x.view_as(x) for x in valid_input_tensors]
-            # 重新构建输入参数，确保顺序正确
+ 
             input_args = []
             tensor_index = 0
             for i in range(len(ctx.input_tensors)):
@@ -175,7 +93,6 @@ class CheckpointFunction(torch.autograd.Function):          # 【融合RGB图像
         grads = list(grads)
         input_grads = []
         tensor_index = 0
-        # 插入 None 梯度以匹配原始输入数量
         for i in range(len(ctx.input_tensors)):
             if i in ctx.none_indices:
                 input_grads.append(None)
@@ -185,7 +102,6 @@ class CheckpointFunction(torch.autograd.Function):          # 【融合RGB图像
                 else:
                     input_grads.append(None)
 
-        # 处理参数梯度
         for tensor in ctx.input_params:
             if tensor is not None and tensor.requires_grad:
                 input_grads.append(grads.pop(0))
@@ -253,13 +169,6 @@ def normalization(channels):
     :return: an nn.Module for normalization.
     """
     return GroupNorm32(32, channels)
-    # # 动态选择能整除 channels 的最大 num_groups（不超过32）
-    # num_groups = 32
-    # while channels % num_groups != 0 and num_groups > 1:
-    #     num_groups -= 1
-    # print(num_groups, channels)
-    # return GroupNorm32(num_groups, channels)
-
 
 # PyTorch 1.7 has SiLU, but we support PyTorch 1.5.
 class SiLU(nn.Module):

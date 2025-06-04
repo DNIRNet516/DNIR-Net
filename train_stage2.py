@@ -73,7 +73,7 @@ def main(args) -> None:
 
     diffusion: Diffusion = instantiate_from_config(cfg.model.diffusion)
 
-    parameters_to_optimize = list(cldm.controlnet_LCA.parameters())
+    parameters_to_optimize = list(cldm.edgecontrolnet.parameters())
     opt = torch.optim.AdamW(parameters_to_optimize, lr=cfg.train.learning_rate)
 
     # Setup data:
@@ -127,6 +127,7 @@ def main(args) -> None:
             gt = rearrange(gt, "b h w c -> b c h w").contiguous().float()
             lq = rearrange(lq, "b h w c -> b c h w").contiguous().float()
             edge = rearrange(edge, "b h w c -> b c h w").contiguous().float()
+            edge = edge[:, 0:1, :, :]
 
             with torch.no_grad():
                 z_0 = pure_cldm.vae_encode(gt)
@@ -181,7 +182,7 @@ def main(args) -> None:
             # Save checkpoint:
             if global_step % cfg.train.ckpt_every == 0 and global_step > 0:
                 if accelerator.is_main_process:
-                    checkpoint = pure_cldm.controlnet_LCA.state_dict()
+                    checkpoint = pure_cldm.edgecontrolnet.state_dict()
                     ckpt_path = f"{ckpt_dir}/{global_step:07d}.pt"
                     torch.save(checkpoint, ckpt_path)
 
@@ -248,7 +249,5 @@ def main(args) -> None:
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--config", type=str, required=True)
-    parser.add_argument("--train_stage", type=int, default=1)
-    parser.add_argument("--controlnet_lca_ckpt", type=str, default=None)
     args = parser.parse_args()
     main(args)

@@ -22,10 +22,8 @@ class BIDInferenceLoop(InferenceLoop):
             config = "configs/inference/swinir.yaml"
             weight = MODELS["swinir_general"]
         elif self.args.version == "v2":
-            # config = "configs/inference/scunet.yaml"
-            # weight = MODELS["scunet_psnr"]                   # ！注意这里是尝试用v2去推理才改的
-            config = "configs/inference/swinir.yaml"
-            weight = MODELS["swinir_general"]
+            config = "configs/inference/scunet.yaml"
+            weight = MODELS["scunet_psnr"]
         else:
             config = "configs/inference/swinir.yaml"
             weight = MODELS["swinir_realesrgan"]
@@ -35,8 +33,7 @@ class BIDInferenceLoop(InferenceLoop):
         self.cleaner.eval().to(self.args.device)
 
     def load_pipeline(self) -> None:
-        # if self.args.version == "v1" or self.args.version == "v2.1":            # ！注意这里是尝试用v2去推理才改的
-        if self.args.version == "v1" or self.args.version == "v2.1" or self.args.version == "v2": 
+        if self.args.version == "v1" or self.args.version == "v2.1":
             pipeline_class = SwinIRPipeline
         else:
             pipeline_class = SCUNetPipeline

@@ -37,9 +37,8 @@ class CustomInferenceLoop(InferenceLoop):
         self.cldm: ControlLDM = instantiate_from_config(self.train_cfg.model.cldm)
 
         # load pre-trained SD weight
-        sd_weight = torch.load(self.train_cfg.train.sd_path, map_location="cpu")
-        # sd_weight = sd_weight["state_dict"]                 # 【与denose不同点2】
-        if "state_dict" in sd_weight:                         # 【与denose不同点2】
+        sd_weight = torch.load(self.train_cfg.train.sd_path, map_location="cpu")              
+        if "state_dict" in sd_weight:                         
             sd_weight = sd_weight["state_dict"]
         if list(sd_weight.keys())[0].startswith("module"):
             sd_weight = {k[len("module.") :]: v for k, v in sd_weight.items()} 
@@ -51,23 +50,13 @@ class CustomInferenceLoop(InferenceLoop):
         # load controlnet weight
         control_weight = torch.load(self.args.ckpt, map_location="cpu")
 
-        if "state_dict" in control_weight:                    # 【与denose不同点3】
+        if "state_dict" in control_weight:                    
             control_weight = control_weight["state_dict"]
         if list(control_weight.keys())[0].startswith("module"):
             control_weight = {k[len("module.") :]: v for k, v in control_weight.items()}
 
-        # self.cldm.load_controlnet_from_ckpt(control_weight)
-        self.cldm.load_controlnet_lca_from_ckpt(control_weight)
-        print(f"load controlnet_LCA weight")
-
-        # # load vae weight
-        # vae_weight = torch.load(self.args.ckpt_vae, map_location="cpu")
-        # if "state_dict" in vae_weight:
-        #     vae_weight = vae_weight["state_dict"]
-        # if list(vae_weight.keys())[0].startswith("module"):
-        #     vae_weight = {k[len("module.") :]: v for k, v in vae_weight.items()}
-        # self.cldm.vae.load_state_dict(vae_weight, strict=True)
-        # print(f"load vae weight")
+        self.cldm.load_controlnet_from_ckpt(control_weight)
+        print(f"load edgecontrolnet weight")
 
         self.cldm.eval().to(self.args.device)
         cast_type = {
@@ -84,10 +73,10 @@ class CustomInferenceLoop(InferenceLoop):
         self.diffusion.to(self.args.device)
 
     def load_cleaner(self) -> None:
-        # NOTE: Use SwinIR as stage-1 model. Change it if you want.
+        # NOTE: Use SwinIR as stage-1 model.
         self.cleaner: SwinIR = instantiate_from_config(self.train_cfg.model.swinir)
         weight = torch.load(self.train_cfg.train.swinir_path, map_location="cpu")
-        if "state_dict" in weight:              # 【与denose不同点1】
+        if "state_dict" in weight:             
             weight = weight["state_dict"]
         if list(weight.keys())[0].startswith("module"):       
             weight = {k[len("module.") :]: v for k, v in weight.items()}                                

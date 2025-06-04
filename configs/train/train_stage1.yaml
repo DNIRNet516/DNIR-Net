@@ -22,9 +22,8 @@ dataset:
     target: diffbir.dataset.codeformer.CodeformerDataset
     params:
       # training file list path
-      # file_list: datasets/files_shuf_train.list
-      file_list_HQ: datasets/ZZCX_01_14/train/HQ.list
-      file_list_LQ: datasets/ZZCX_01_14/train/LQ.list
+      file_list_HQ: datasets/ZZCX_3_3/train/HQ.list
+      file_list_LQ: datasets/ZZCX_3_3/train/LQ.list
       file_backend_cfg:
         target: diffbir.dataset.file_backend.HardDiskBackend
       out_size: 512
@@ -40,9 +39,8 @@ dataset:
     target: diffbir.dataset.codeformer.CodeformerDataset
     params:
       # validation file list path
-      # file_list: datasets/files_shuf_val.list
-      file_list_HQ: datasets/ZZCX_01_14/val/HQ.list
-      file_list_LQ: datasets/ZZCX_01_14/val/LQ.list
+      file_list_HQ: datasets/ZZCX_3_3/val/HQ.list
+      file_list_LQ: datasets/ZZCX_3_3/val/LQ.list
       file_backend_cfg:
         target: diffbir.dataset.file_backend.HardDiskBackend
       out_size: 512
@@ -60,7 +58,7 @@ batch_transform:
 
 train:
   # experiment directory path
-  exp_dir: experiment3/stage1
+  exp_dir: 
   learning_rate: 1e-4
   # total batch size
   batch_size: 16

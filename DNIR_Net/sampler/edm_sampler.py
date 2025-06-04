@@ -142,7 +142,7 @@ class EDMSampler(Sampler):
         model: ControlLDM,
         device: str,
         steps: int,
-        # x_size: torch.Tuple[int],         #这里服务器只能用python3.10和torch 1.12,应该是以后的版本才支持
+        # x_size: torch.Tuple[int],         
         x_size: typing.Tuple[int],
         cond: Dict[str, torch.Tensor],
         uncond: Dict[str, torch.Tensor],

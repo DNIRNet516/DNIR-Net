@@ -304,19 +304,19 @@ def make_attn(in_channels, attn_type="vanilla", attn_kwargs=None):
 
 
 class Encoder(nn.Module):
-    def __init__(           # 参数在train_stage2.yaml 中的 vae_cfg:
+    def __init__(           
         self,
         *,
-        ch,     # 128
-        out_ch,  # 3
-        ch_mult=(1, 2, 4, 8),  # (1, 2, 4, 4)
-        num_res_blocks,     # 2
-        attn_resolutions,   # []
+        ch,    
+        out_ch,  
+        ch_mult=(1, 2, 4, 8),  
+        num_res_blocks,     
+        attn_resolutions,  
         dropout=0.0,
         resamp_with_conv=True,
-        in_channels,    # 3
-        resolution,     # 256
-        z_channels,     # 4
+        in_channels,   
+        resolution,     
+        z_channels,     
         double_z=True,
         use_linear_attn=False,
         **ignore_kwargs,
@@ -392,7 +392,7 @@ class Encoder(nn.Module):
         self.norm_out = Normalize(block_in)
         self.conv_out = torch.nn.Conv2d(
             block_in,           
-            2 * z_channels if double_z else z_channels,     # 2 * 4 = 8
+            2 * z_channels if double_z else z_channels,     
             kernel_size=3,
             stride=1,
             padding=1,
@@ -401,35 +401,26 @@ class Encoder(nn.Module):
     def forward(self, x):
         # timestep embedding
         temb = None
-        # x.shape: torch.Size([16, 3, 512, 512])
         # downsampling
-        hs = [self.conv_in(x)]           # nn.Conv2d(in_channels=3, out_channels=128, kernel_size=3, stride=1, padding=1)，具体在上面342行
-        # hs[0].shape: torch.Size([16, 128, 512, 512]) 
-        for i_level in range(self.num_resolutions):     # num_resolutions = 4，有4层下采样层级
-            for i_block in range(self.num_res_blocks):  # num_res_blocks = 2，每层有2个残差块
+        hs = [self.conv_in(x)]          
+        for i_level in range(self.num_resolutions):    
+            for i_block in range(self.num_res_blocks):  
                 h = self.down[i_level].block[i_block](hs[-1], temb)
                 if len(self.down[i_level].attn) > 0:
                     h = self.down[i_level].attn[i_block](h)
                 hs.append(h)
-            if i_level != self.num_resolutions - 1:     # 最后一层不进行下采样
+            if i_level != self.num_resolutions - 1:    
                 hs.append(self.down[i_level].downsample(hs[-1]))
-            # hs[1].shape: torch.Size([16, 128, 512, 512])
-            # hs[2].shape: torch.Size([16, 128, 512, 512])
-            # hs[3].shape: torch.Size([16, 128, 256, 256])
-            # hs[4].shape: torch.Size([16, 256, 256, 256]) 
-        # hs[-1].shape: torch.Size([16, 512, 64, 64])  
         # middle
         h = hs[-1]
         h = self.mid.block_1(h, temb)
         h = self.mid.attn_1(h)
         h = self.mid.block_2(h, temb)
-        # h.shape: torch.Size([16, 512, 64, 64]) 
 
         # end
         h = self.norm_out(h)
         h = nonlinearity(h)
         h = self.conv_out(h)
-        # h.shape: torch.Size([16, 8, 64, 64])  
         return h
 
 
@@ -573,18 +564,14 @@ class AutoencoderKL(nn.Module):
         self.encoder = Encoder(**ddconfig)
         self.decoder = Decoder(**ddconfig)
         assert ddconfig["double_z"]
-        self.quant_conv = torch.nn.Conv2d(2 * ddconfig["z_channels"], 2 * embed_dim, 1)     # z_channels=4, embed_dim=4
+        self.quant_conv = torch.nn.Conv2d(2 * ddconfig["z_channels"], 2 * embed_dim, 1)    
         self.post_quant_conv = torch.nn.Conv2d(embed_dim, ddconfig["z_channels"], 1)
         self.embed_dim = embed_dim
 
-    def encode(self, x):            # 外面的调用操作是，z = encoder(image).mode() * self.scale_factor
-        # x shape: torch.Size([16, 3, 512, 512])
+    def encode(self, x):            
         h = self.encoder(x)         
-        # h shape: torch.Size([16, 8, 64, 64])
-        moments = self.quant_conv(h)    # 具体代码在上面569行
-        # moments shape: torch.Size([16, 8, 64, 64])
+        moments = self.quant_conv(h)    
         posterior = DiagonalGaussianDistribution(moments)           
-        # posterior.mode()后 shape: torch.Size([16, 4, 64, 64])
         return posterior
 
     def decode(self, z):
@@ -600,40 +587,3 @@ class AutoencoderKL(nn.Module):
             z = posterior.mode()
         dec = self.decode(z)
         return dec, posterior
-
-# 对于 AutoencoderKL 类 的 encode 方法的解释
-    def encode(self, x):
-        # x shape: torch.Size([16, 3, 512, 512])
-        h = self.encoder(x)
-        # 将输入 x 传入 encoder 中进行处理。
-        # encoder 是 Encoder 类的实例，首先进入 Encoder 的 __init__ 方法进行初始化，根据传入的 ddconfig 配置参数确定模型结构。
-        # 1. 初始卷积层：
-        #    - 输入 x 经过 self.conv_in 卷积层，根据 ddconfig 中 in_channels 为 3，ch 为 128，
-        #    - 该卷积层是 nn.Conv2d(in_channels=3, out_channels=128, kernel_size=3, stride=1, padding=1)，
-        #    - 输出的特征图通道数变为 128，空间尺寸不变，此时形状为 [16, 128, 512, 512]。
-        # 2. 下采样层级：
-        #    - 共有 self.num_resolutions 个下采样层级，根据 ddconfig 中 ch_mult 列表长度确定为 4 层。
-        #    - 在每个层级中，有 self.num_res_blocks 个残差块，这里为 2 个。
-        #    - 每个层级的残差块处理输入特征图时，假设不改变特征图形状（在满足一定条件下）。
-        #    - 每个层级处理完后，若不是最后一层，会进行下采样操作，下采样使空间尺寸减半，通道数根据 ch_mult 变化。
-        #    - 经过 4 个下采样层级后，特征图形状变为 [16, 512, 64, 64]（通道数变为 128 * 4 = 512，空间尺寸经过多次下采样变为 64x64）。
-        # 3. 中间模块：
-        #    - 中间模块包含 2 个残差块和 1 个注意力模块（但由于配置中不使用注意力模块，注意力模块不产生实际影响）。
-        #    - 经过中间模块处理后，特征图形状仍为 [16, 512, 64, 64]。
-        # 4. 输出模块：
-        #    - 先经过归一化层和激活函数，形状不变。
-        #    - 再经过 self.conv_out 卷积层，根据 ddconfig 中 z_channels 为 4，double_z 为 true，
-        #    - 该卷积层是 nn.Conv2d(in_channels=512, out_channels=2 * 4 = 8, kernel_size=3, stride=1, padding=1)，
-        #    - 输出特征图形状变为 [16, 8, 64, 64]。
-        # 最终 h 的形状为 [16, 8, 64, 64]。
-        moments = self.quant_conv(h)
-        # 将 encoder 输出的 h 传入 self.quant_conv 卷积层进行处理。
-        # self.quant_conv 是 nn.Conv2d(2 * ddconfig["z_channels"], 2 * embed_dim, 1)，
-        # 已知 ddconfig["z_channels"] 为 4，embed_dim 为 4，所以该卷积层是 nn.Conv2d(8, 8, 1)，
-        # 处理后特征图的形状不变，moments 形状仍为 [16, 8, 64, 64]。
-        posterior = DiagonalGaussianDistribution(moments)
-        # 使用 DiagonalGaussianDistribution 类对 moments 进行处理，得到一个对角高斯分布对象 posterior。
-        # 在 DiagonalGaussianDistribution 的 __init__ 方法中，将 moments 按通道维度分成均值和对数方差两部分，
-        # 并对对数方差进行了范围限制，同时计算了标准差和方差。
-        # 调用 posterior.mode() 方法后，会返回均值，此时形状为 [16, 4, 64, 64]（因为均值是按通道维度分成两部分后的一半）。
-        return posterior

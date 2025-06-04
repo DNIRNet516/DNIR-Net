@@ -93,9 +93,7 @@ class Pipeline:
         s_noise: float,
         eta: float,
         order: int,
-        # condition: torch.Tensor  # 新增 condition 参数
-        edge:torch.Tensor,             # 新增 rgb 参数
-        train_stage: int,
+        edge:torch.Tensor,            
     ) -> torch.Tensor:
         bs, _, h0, w0 = cond_img.shape
         # 1. Pad condition image for VAE encoding (scale factor = 8)
@@ -119,12 +117,11 @@ class Pipeline:
         if vae_encoder_tiled:
             if vae_encoder_tile_size % 8 != 0:
                 raise ValueError("VAE encoder tile size must be a multiple of 8")
-        # condition shape: torch.Size([1, 768])
+
         with VRAMPeakMonitor("encoding condition image"):
             cond = self.cldm.prepare_condition(
                 cond_img,
                 [pos_prompt] * bs,
-                # condition,
                 edge,
                 vae_encoder_tiled,
                 vae_encoder_tile_size,
@@ -132,7 +129,6 @@ class Pipeline:
             uncond = self.cldm.prepare_condition(
                 cond_img,
                 [neg_prompt] * bs,
-                # condition,
                 edge,
                 vae_encoder_tiled,
                 vae_encoder_tile_size,
@@ -189,7 +185,7 @@ class Pipeline:
         betas = self.diffusion.betas
         parameterization = self.diffusion.parameterization
         if sampler_type == "spaced":
-            sampler = SpacedSampler(betas, parameterization, rescale_cfg, is_first_stage=(train_stage == 1))
+            sampler = SpacedSampler(betas, parameterization, rescale_cfg)
         elif sampler_type == "ddim":
             sampler = DDIMSampler(betas, parameterization, rescale_cfg, eta=0)
         elif sampler_type.startswith("dpm"):
@@ -273,9 +269,7 @@ class Pipeline:
         s_noise: float,
         eta: float,
         order: int,
-        # condition: torch.Tensor  # 新增 condition 参数
-        edge: np.ndarray,  # 新增 edge 参数
-        train_stage: int,
+        edge: np.ndarray,  
     ) -> np.ndarray:
         lq_tensor = (
             torch.tensor(lq, dtype=torch.float32, device=self.device)
@@ -291,6 +285,7 @@ class Pipeline:
             .permute(0, 3, 1, 2)
             .contiguous()
         )
+        edge_tensor = edge_tensor[:, 0:1, :, :]
 
         self.set_output_size(lq_tensor.size())
 
@@ -326,9 +321,7 @@ class Pipeline:
             s_noise,
             eta,
             order,
-            # condition  # 传递 feature 给 apply_cldm 方法
-            edge_tensor,  # 传递 rgb 给 apply_cldm 方法
-            train_stage,
+            edge_tensor,  
         )
         sample = F.interpolate(
             wavelet_reconstruction((sample + 1) / 2, cond_img),

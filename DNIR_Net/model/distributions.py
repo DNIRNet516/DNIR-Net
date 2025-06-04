@@ -24,8 +24,7 @@ class DiracDistribution(AbstractDistribution):
 class DiagonalGaussianDistribution(object):
     def __init__(self, parameters, deterministic=False):
         self.parameters = parameters
-        self.mean, self.logvar = torch.chunk(parameters, 2, dim=1)  # 用于将输入张量按照指定的维度进行分块
-        # parameters是要分块的张量，分2块，沿着dim=1 维度1
+        self.mean, self.logvar = torch.chunk(parameters, 2, dim=1)  
         self.logvar = torch.clamp(self.logvar, -30.0, 20.0)
         self.deterministic = deterministic
         self.std = torch.exp(0.5 * self.logvar)
@@ -59,7 +58,7 @@ class DiagonalGaussianDistribution(object):
             logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
             dim=dims)
 
-    def mode(self):     # 用的这个，代码在上面27行
+    def mode(self):    
         return self.mean
 
 
