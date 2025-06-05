@@ -1,6 +1,6 @@
 model:
   cldm:
-    target: diffbir.model.cldm.ControlLDM
+    target: DNIR_Net.model.cldm.ControlLDM
     params:
       latent_scale_factor: 0.18215
       unet_cfg:
@@ -67,7 +67,7 @@ model:
         legacy: False
 
   swinir:
-    target: diffbir.model.swinir.SwinIR
+    target: DNIR_Net.model.swinir.SwinIR
     params:
       img_size: 64
       patch_size: 1
@@ -85,7 +85,7 @@ model:
       unshuffle_scale: 8
 
   diffusion:
-    target: diffbir.model.gaussian_diffusion.Diffusion
+    target: DNIR_Net.model.gaussian_diffusion.Diffusion
     params:
       linear_start: 0.00085
       linear_end: 0.0120
@@ -95,14 +95,14 @@ model:
 
 dataset:
   train:
-    target: diffbir.dataset.codeformer.CodeformerDataset
+    target: DNIR_Net.dataset.codeformer.CodeformerDataset
     params:
       # training file list path
       file_list_HQ: datasets/ZZCX_3_3/train/HQ.list
       file_list_LQ: datasets/ZZCX_3_3/train/LQ.list
       file_list_edge: datasets/ZZCX_3_3/train/edge.list
       file_backend_cfg:
-        target: diffbir.dataset.file_backend.HardDiskBackend
+        target: DNIR_Net.dataset.file_backend.HardDiskBackend
       out_size: 512
       crop_type: center
       blur_kernel_size: 41
@@ -114,13 +114,13 @@ dataset:
       jpeg_range: [30, 100]
 
 batch_transform:
-  target: diffbir.dataset.batch_transform.IdentityBatchTransform
+  target: DNIR_Net.dataset.batch_transform.IdentityBatchTransform
 
 train:
   # pretrained sd v2.1 path
   sd_path: weights/v2-1_512-ema-pruned.ckpt
   # experiment directory path
-  exp_dir: 
+  exp_dir: experiment
   # stage 1 swinir path.
   swinir_path: weights/my_swinir.pt
   learning_rate: 1e-4

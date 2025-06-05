@@ -69,7 +69,7 @@ class ControlLDM(nn.Module):
     @torch.no_grad()
     def load_controlnet_from_unet(self) -> Tuple[Set[str]]:
         unet_sd = self.unet.state_dict()
-        scratch_sd = self.controlnet.state_dict()
+        scratch_sd = self.edgecontrolnet.state_dict()
         init_sd = {}
         init_with_new_zero = set()
         init_with_scratch = set()
